@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from pmt.config.settings import Settings
 from pmt.storage.database import Database
 from pmt.storage.models import OrderLog
 from pmt.trading.exchange_adapter import ExchangeAdapter
@@ -10,10 +11,11 @@ from pmt.trading.exchange_adapter import ExchangeAdapter
 class OrderExecutor:
     """주문 실행 및 로깅."""
 
-    def __init__(self, exchange_adapter: ExchangeAdapter, database: Database) -> None:
+    def __init__(self, exchange_adapter: ExchangeAdapter, database: Database, settings: Optional[Settings] = None) -> None:
         """초기화."""
         self.exchange_adapter = exchange_adapter
         self.database = database
+        self.settings = settings
 
     def execute_order(
         self,
@@ -40,6 +42,23 @@ class OrderExecutor:
         Returns:
             (성공 여부, order_id 또는 None, 에러 메시지 또는 None)
         """
+        # Bug Fix 4: Check dry_run_mode before executing actual order
+        if self.settings and self.settings.dry_run_mode:
+            # Dry Run 모드: 실제 주문 실행하지 않고 로깅만 수행
+            self._log_order(
+                exchange=exchange_name,
+                market_id=market_id,
+                outcome=outcome,
+                side=side,
+                price=price,
+                size=size,
+                order_id=None,
+                success=True,
+                error_message="Dry Run 모드: 실제 주문이 실행되지 않았습니다",
+                preset_name=preset_name,
+            )
+            return True, None, None
+
         # 주문 실행
         success, order_id, error_msg = self.exchange_adapter.create_order(
             exchange_name=exchange_name,
