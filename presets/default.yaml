@@ -1,0 +1,19 @@
+# 기본 프리셋 예시
+# 실제 사용 시 market_id와 가격을 수정하세요
+
+- name: FED_YES_SMALL
+  exchange: polymarket
+  market_id: fed-2026-rate
+  outcome: Yes
+  side: BUY
+  price: 0.64
+  size: 50
+
+- name: FED_NO_SMALL
+  exchange: polymarket
+  market_id: fed-2026-rate
+  outcome: No
+  side: BUY
+  price: 0.35
+  size: 50
+

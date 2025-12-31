@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pmt"
+version = "0.1.0"
+description = "Prediction Market Terminal - Unified trading terminal for prediction markets"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"  # TOML 테이블에서 SPDX 문자열로 변경
+authors = [
+    {name = "PMT Team"}
+]
+keywords = ["prediction-markets", "trading", "polymarket", "limitless", "opinion"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    # "License :: OSI Approved :: MIT License",  # deprecated이므로 제거 (선택사항)
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "dr-manhattan",
+    "PySide6>=6.6.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-qt>=4.2.0",
+    "black>=23.11.0",
+    "ruff>=0.1.6",
+    "mypy>=1.7.0",
+    "pyinstaller>=6.0.0",
+]
+
+[project.scripts]
+pmt = "pmt.main:main"
+
+# setuptools 패키지 발견 설정 추가
+[tool.setuptools]
+packages = ["pmt"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml"]  # presets 디렉토리의 YAML 파일 포함 (필요한 경우)
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
