@@ -53,6 +53,35 @@ python -m pmt.main
 pmt
 ```
 
+## 패키징 및 배포
+
+### PyInstaller를 사용한 단일 실행 파일 생성
+
+```bash
+# PyInstaller 설치
+pip install pyinstaller
+
+# 실행 파일 생성
+pyinstaller pmt.spec
+
+# 또는 직접 명령어 사용
+pyinstaller --name=pmt \
+    --onefile \
+    --windowed \
+    --add-data "presets:presets" \
+    --hidden-import=PySide6.QtCore \
+    --hidden-import=PySide6.QtWidgets \
+    --hidden-import=PySide6.QtGui \
+    pmt/main.py
+```
+
+생성된 실행 파일은 `dist/pmt` (Linux/Mac) 또는 `dist/pmt.exe` (Windows)에 위치합니다.
+
+### 환경 변수 설정
+
+실행 파일과 같은 디렉토리에 `.env` 파일을 생성하여 거래소 인증 정보를 설정하세요.
+`.env.example` 파일을 참고하세요.
+
 ## 프로젝트 구조
 
 ```
@@ -75,4 +104,3 @@ pmt/
 ## 라이선스
 
 MIT
-

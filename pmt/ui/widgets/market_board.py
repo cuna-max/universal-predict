@@ -1,11 +1,12 @@
 """통합 마켓 보드 위젯."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -25,6 +26,7 @@ class MarketBoard(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """초기화."""
         super().__init__(parent)
+        self._all_markets: list[dict] = []
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -41,8 +43,39 @@ class MarketBoard(QWidget):
         keyword_label = QLabel("키워드:")
         self.keyword_filter = QLineEdit()
         self.keyword_filter.setPlaceholderText("마켓 질문 검색...")
+        self.keyword_filter.textChanged.connect(self._apply_filters)
         filter_layout.addWidget(keyword_label)
         filter_layout.addWidget(self.keyword_filter)
+
+        # 필터 행
+        filter_row = QVBoxLayout()
+        filter_row.setSpacing(5)
+
+        # 마감 시간 필터
+        close_time_label = QLabel("마감 시간:")
+        self.close_time_filter = QComboBox()
+        self.close_time_filter.addItems(["전체", "오늘", "이번 주", "이번 달"])
+        self.close_time_filter.currentIndexChanged.connect(self._apply_filters)
+        filter_row.addWidget(close_time_label)
+        filter_row.addWidget(self.close_time_filter)
+
+        # 거래량 필터
+        volume_label = QLabel("최소 거래량:")
+        self.volume_filter = QLineEdit()
+        self.volume_filter.setPlaceholderText("0")
+        self.volume_filter.textChanged.connect(self._apply_filters)
+        filter_row.addWidget(volume_label)
+        filter_row.addWidget(self.volume_filter)
+
+        # 상태 필터
+        status_label = QLabel("상태:")
+        self.status_filter = QComboBox()
+        self.status_filter.addItems(["전체", "Open", "Closed"])
+        self.status_filter.currentIndexChanged.connect(self._apply_filters)
+        filter_row.addWidget(status_label)
+        filter_row.addWidget(self.status_filter)
+
+        filter_layout.addLayout(filter_row)
 
         # 새로고침 버튼
         self.refresh_button = QPushButton("새로고침")
@@ -84,6 +117,66 @@ class MarketBoard(QWidget):
 
     def set_markets(self, markets: list[dict]) -> None:
         """마켓 데이터 설정."""
+        self._all_markets = markets
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
+        """필터 적용."""
+        filtered_markets = self._all_markets.copy()
+
+        # 키워드 필터
+        keyword = self.keyword_filter.text().lower()
+        if keyword:
+            filtered_markets = [
+                m for m in filtered_markets
+                if keyword in m.get("question", "").lower()
+            ]
+
+        # 마감 시간 필터
+        close_time_option = self.close_time_filter.currentText()
+        if close_time_option != "전체":
+            now = datetime.now()
+            if close_time_option == "오늘":
+                cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif close_time_option == "이번 주":
+                cutoff = now - timedelta(days=now.weekday())
+                cutoff = cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif close_time_option == "이번 달":
+                cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                cutoff = None
+
+            if cutoff:
+                filtered_markets = [
+                    m for m in filtered_markets
+                    if m.get("close_time") and m.get("close_time") >= cutoff
+                ]
+
+        # 거래량 필터
+        volume_text = self.volume_filter.text()
+        if volume_text:
+            try:
+                min_volume = float(volume_text)
+                filtered_markets = [
+                    m for m in filtered_markets
+                    if (m.get("volume") or 0) >= min_volume
+                ]
+            except ValueError:
+                pass
+
+        # 상태 필터
+        status_option = self.status_filter.currentText()
+        if status_option != "전체":
+            filtered_markets = [
+                m for m in filtered_markets
+                if m.get("status", "").lower() == status_option.lower()
+            ]
+
+        # 필터링된 결과 표시
+        self._display_markets(filtered_markets)
+
+    def _display_markets(self, markets: list[dict]) -> None:
+        """마켓 데이터 표시."""
         self.table.setRowCount(len(markets))
 
         for row, market in enumerate(markets):

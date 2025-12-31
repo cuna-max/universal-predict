@@ -2,11 +2,12 @@
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -18,6 +19,9 @@ from PySide6.QtWidgets import (
 
 class AccountPanel(QWidget):
     """계정 정보, 포지션, 활성 주문을 표시하는 패널."""
+
+    refresh_requested = Signal()  # 전체 새로고침 요청
+    cancel_order_requested = Signal(str, str)  # exchange_name, order_id
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """초기화."""
@@ -85,13 +89,14 @@ class AccountPanel(QWidget):
         orders_layout.setContentsMargins(5, 5, 5, 5)
 
         self.orders_table = QTableWidget()
-        self.orders_table.setColumnCount(6)
+        self.orders_table.setColumnCount(7)
         self.orders_table.setHorizontalHeaderLabels(
-            ["거래소", "마켓", "Outcome", "Side", "가격", "수량"]
+            ["거래소", "마켓", "Outcome", "Side", "가격", "수량", "주문 ID"]
         )
         self.orders_table.horizontalHeader().setStretchLastSection(True)
         self.orders_table.setAlternatingRowColors(True)
         self.orders_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.orders_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         orders_layout.addWidget(self.orders_table)
 
         cancel_order_btn = QPushButton("선택 주문 취소")
@@ -105,20 +110,49 @@ class AccountPanel(QWidget):
         self.tabs.addTab(self.orders_tab, "활성 주문")
 
     def _refresh_balance(self) -> None:
-        """잔고 새로고침 (나중에 실제 로직 연결)."""
-        pass
+        """잔고 새로고침 요청."""
+        self.refresh_requested.emit()
 
     def _refresh_positions(self) -> None:
-        """포지션 새로고침 (나중에 실제 로직 연결)."""
-        pass
+        """포지션 새로고침 요청."""
+        self.refresh_requested.emit()
 
     def _refresh_orders(self) -> None:
-        """주문 새로고침 (나중에 실제 로직 연결)."""
-        pass
+        """주문 새로고침 요청."""
+        self.refresh_requested.emit()
 
     def _cancel_selected_order(self) -> None:
-        """선택된 주문 취소 (나중에 실제 로직 연결)."""
-        pass
+        """선택된 주문 취소 요청."""
+        selected_rows = self.orders_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "오류", "취소할 주문을 선택하세요.")
+            return
+
+        row = selected_rows[0].row()
+        exchange_item = self.orders_table.item(row, 0)
+        order_id_item = self.orders_table.item(row, 6)  # 주문 ID 컬럼
+
+        if not exchange_item or not order_id_item:
+            QMessageBox.warning(self, "오류", "주문 정보를 찾을 수 없습니다.")
+            return
+
+        exchange = exchange_item.text()
+        order_id = order_id_item.text()
+
+        if not order_id:
+            QMessageBox.warning(self, "오류", "주문 ID가 없습니다.")
+            return
+
+        # 확인 다이얼로그
+        reply = QMessageBox.question(
+            self,
+            "주문 취소 확인",
+            f"주문을 취소하시겠습니까?\n거래소: {exchange}\n주문 ID: {order_id}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.cancel_order_requested.emit(exchange, order_id)
 
     def set_balances(self, balances: list[dict]) -> None:
         """잔고 데이터 설정."""
@@ -172,5 +206,8 @@ class AccountPanel(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
             self.orders_table.setItem(row, 5, size_item)
+            # 주문 ID 추가
+            order_id_item = QTableWidgetItem(order.get("order_id", ""))
+            self.orders_table.setItem(row, 6, order_id_item)
         self.orders_table.resizeColumnsToContents()
 
