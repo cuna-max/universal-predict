@@ -30,7 +30,7 @@ class MarketDetailPanel(QWidget):
         question_label.setStyleSheet("font-weight: bold;")
         self.question_text = QLabel("마켓을 선택하세요")
         self.question_text.setWordWrap(True)
-        self.question_text.setStyleSheet("padding: 5px; background-color: #f0f0f0; border-radius: 3px;")
+        self.question_text.setStyleSheet("padding: 5px; background-color: #f0f0f0; border-radius: 3px; color: #000000;")
         layout.addWidget(question_label)
         layout.addWidget(self.question_text)
 
@@ -38,7 +38,7 @@ class MarketDetailPanel(QWidget):
         outcome_label = QLabel("가격:")
         outcome_label.setStyleSheet("font-weight: bold;")
         self.outcome_text = QLabel("YES: - | NO: -")
-        self.outcome_text.setStyleSheet("padding: 5px; background-color: #e8f4f8; border-radius: 3px;")
+        self.outcome_text.setStyleSheet("padding: 5px; background-color: #e8f4f8; border-radius: 3px; color: #000000;")
         layout.addWidget(outcome_label)
         layout.addWidget(self.outcome_text)
 
@@ -54,7 +54,7 @@ class MarketDetailPanel(QWidget):
         position_label = QLabel("보유 포지션:")
         position_label.setStyleSheet("font-weight: bold;")
         self.position_text = QLabel("없음")
-        self.position_text.setStyleSheet("padding: 5px; background-color: #fff4e6; border-radius: 3px;")
+        self.position_text.setStyleSheet("padding: 5px; background-color: #fff4e6; border-radius: 3px; color: #000000;")
         layout.addWidget(position_label)
         layout.addWidget(self.position_text)
 

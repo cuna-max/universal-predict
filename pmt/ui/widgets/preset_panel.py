@@ -71,6 +71,7 @@ class PresetPanel(QWidget):
                     background-color: #f0f0f0;
                     border: 1px solid #ccc;
                     border-radius: 4px;
+                    color: #000000;
                 }
                 QPushButton:hover {
                     background-color: #e0e0e0;
