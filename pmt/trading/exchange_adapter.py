@@ -22,26 +22,33 @@ class ExchangeAdapter:
         exchange_name_lower = exchange_name.lower()
 
         if exchange_name_lower in self._exchanges:
-            print(f"[DEBUG] 거래소 {exchange_name} 캐시에서 반환")
             return self._exchanges[exchange_name_lower]
 
         try:
             config = self.settings.get_exchange_config(exchange_name_lower)
-            print(f"[DEBUG] 거래소 {exchange_name} 초기화 시도, 설정 키: {list(config.keys())}")
-
-            # DR_MANHATTAN.md에 따르면 create_exchange() 사용 권장
+            exchange = None
+            
+            # 먼저 create_exchange() 시도
             if hasattr(dr_manhattan, "create_exchange"):
-                exchange = dr_manhattan.create_exchange(exchange_name_lower, config)
-            elif exchange_name_lower == "polymarket":
-                exchange = dr_manhattan.Polymarket(config)
-            elif exchange_name_lower == "opinion":
-                exchange = dr_manhattan.Opinion(config)
-            elif exchange_name_lower == "limitless":
-                exchange = dr_manhattan.Limitless(config)
-            else:
-                raise ValueError(f"거래소 {exchange_name}를 생성할 수 없습니다.")
+                try:
+                    exchange = dr_manhattan.create_exchange(exchange_name_lower, config)
+                except Exception:
+                    pass  # 실패하면 직접 클래스 사용
+            
+            # create_exchange()가 실패하거나 없으면 직접 클래스 사용
+            if exchange is None:
+                if exchange_name_lower == "polymarket":
+                    exchange = dr_manhattan.Polymarket(config)
+                elif exchange_name_lower == "opinion":
+                    exchange = dr_manhattan.Opinion(config)
+                elif exchange_name_lower == "limitless":
+                    exchange = dr_manhattan.Limitless(config)
+                else:
+                    raise ValueError(f"거래소 {exchange_name}를 생성할 수 없습니다.")
 
-            print(f"[DEBUG] 거래소 {exchange_name} 초기화 성공, 타입: {type(exchange)}")
+            if exchange is None:
+                raise ValueError(f"거래소 {exchange_name} 초기화 결과가 None입니다.")
+            
             self._exchanges[exchange_name_lower] = exchange
             return exchange
         except Exception as e:
@@ -54,20 +61,15 @@ class ExchangeAdapter:
         """사용 가능한 거래소 목록 반환."""
         # DR_MANHATTAN.md에 따르면 list_exchanges() 함수가 있음
         try:
-            # dr-manhattan의 list_exchanges 사용
             if hasattr(dr_manhattan, "list_exchanges"):
                 exchanges = dr_manhattan.list_exchanges()
-                print(f"[DEBUG] dr-manhattan.list_exchanges() 결과: {exchanges}")
                 if exchanges:
                     return exchanges
-        except Exception as e:
-            print(f"[DEBUG] dr-manhattan.list_exchanges() 실패: {e}")
+        except Exception:
+            pass
 
         # list_exchanges가 없는 경우, DR_MANHATTAN.md에 명시된 거래소 목록 사용
-        # 문서: ['polymarket', 'limitless', 'opinion']
-        known_exchanges = ["polymarket", "limitless", "opinion"]
-        print(f"[DEBUG] 사용 가능한 거래소 (하드코딩): {known_exchanges}")
-        return known_exchanges
+        return ["polymarket", "limitless", "opinion"]
 
     def get_all_exchanges(self) -> dict[str, Exchange]:
         """모든 거래소 인스턴스 반환."""
@@ -88,29 +90,42 @@ class ExchangeAdapter:
         """
         exchange = self.get_exchange(exchange_name)
         if not exchange:
-            print(f"[DEBUG] 거래소 {exchange_name} 인스턴스를 가져올 수 없습니다.")
             return []
 
         try:
-            # 사용 가능한 메서드 확인
-            available_methods = [m for m in dir(exchange) if not m.startswith("_")]
-            print(f"[DEBUG] 거래소 {exchange_name} 사용 가능한 메서드: {available_methods[:10]}...")
-
-            # DR_MANHATTAN.md: markets = polymarket.fetch_markets()
-            # Market 객체 리스트 반환, market.question, market.prices 속성 있음
+            markets = None
+            
             if hasattr(exchange, "fetch_markets"):
-                print(f"[DEBUG] {exchange_name}: fetch_markets() 호출 시도")
-                markets = exchange.fetch_markets()
+                try:
+                    markets = exchange.fetch_markets()
+                except Exception as e:
+                    print(f"[ERROR] {exchange_name}: fetch_markets() 호출 실패: {e}")
+                    return []
             else:
-                print(f"[ERROR] 거래소 {exchange_name}에 fetch_markets() 메서드가 없습니다.")
-                print(f"[DEBUG] 사용 가능한 메서드: {[m for m in available_methods if 'market' in m.lower()]}")
-                return []
+                # 대체 메서드 시도
+                if hasattr(exchange, "get_markets"):
+                    try:
+                        markets = exchange.get_markets()
+                    except Exception as e:
+                        print(f"[ERROR] {exchange_name}: get_markets() 실패: {e}")
+                
+                if markets is None:
+                    print(f"[ERROR] 거래소 {exchange_name}에 마켓 조회 메서드가 없습니다.")
+                    return []
 
             if markets is None:
-                print(f"[WARNING] {exchange_name}: 마켓 데이터가 None입니다.")
                 return []
 
-            print(f"[DEBUG] {exchange_name}: {len(markets) if isinstance(markets, (list, tuple)) else 'N/A'} 개 마켓 조회됨")
+            # 리스트가 아니면 리스트로 변환 시도
+            if not isinstance(markets, (list, tuple)):
+                try:
+                    markets = list(markets)
+                except Exception as e:
+                    print(f"[ERROR] {exchange_name}: 마켓 데이터를 리스트로 변환 실패: {e}")
+                    return []
+
+            if len(markets) == 0:
+                print(f"[WARNING] {exchange_name}: 조회된 마켓이 0개입니다.")
 
             # 정규화된 형식으로 변환
             normalized_markets = []
@@ -119,14 +134,9 @@ class ExchangeAdapter:
                     normalized = self._normalize_market_data(market, exchange_name)
                     if normalized:
                         normalized_markets.append(normalized)
-                    else:
-                        print(f"[WARNING] {exchange_name}: 마켓 {idx} 정규화 실패")
                 except Exception as e:
                     print(f"[ERROR] {exchange_name}: 마켓 {idx} 정규화 중 오류: {e}")
-                    import traceback
-                    traceback.print_exc()
 
-            print(f"[DEBUG] {exchange_name}: {len(normalized_markets)} 개 마켓 정규화 완료")
             return normalized_markets
         except Exception as e:
             print(f"[ERROR] 마켓 조회 실패 {exchange_name}: {e}")
@@ -158,12 +168,10 @@ class ExchangeAdapter:
                 market = exchange.get_market(market_id)
             else:
                 # fetch_markets()에서 찾기
-                print(f"[DEBUG] {exchange_name}: fetch_markets()에서 {market_id} 검색")
                 markets = exchange.fetch_markets()
                 for m in markets:
                     if self._get_market_id(m) == market_id:
                         return self._normalize_market_data(m, exchange_name)
-                print(f"[WARNING] {exchange_name}: 마켓 {market_id}를 찾을 수 없습니다.")
                 return None
 
             if not market:
@@ -186,46 +194,36 @@ class ExchangeAdapter:
         """
         exchange = self.get_exchange(exchange_name)
         if not exchange:
-            print(f"[DEBUG] 거래소 {exchange_name} 인스턴스를 가져올 수 없습니다.")
             return None
 
         try:
             # DR_MANHATTAN.md: balance = polymarket.fetch_balance()
             # dict 반환: {'USDC': ...}
             if hasattr(exchange, "fetch_balance"):
-                print(f"[DEBUG] {exchange_name}: fetch_balance() 호출 시도")
                 balance_dict = exchange.fetch_balance()
-                print(f"[DEBUG] {exchange_name}: 잔고 조회 결과 = {balance_dict} (타입: {type(balance_dict)})")
                 
                 # dict에서 USDC 잔고 추출 (또는 첫 번째 값)
                 if isinstance(balance_dict, dict):
-                    # USDC 우선, 없으면 첫 번째 값
                     if "USDC" in balance_dict:
                         balance_value = balance_dict["USDC"]
                     elif balance_dict:
-                        # 첫 번째 값 사용
                         balance_value = list(balance_dict.values())[0]
                     else:
-                        print(f"[WARNING] {exchange_name}: 잔고 dict가 비어있습니다.")
                         return None
                     
                     try:
-                        result = float(balance_value)
-                        print(f"[DEBUG] {exchange_name}: 잔고 변환 성공 = {result}")
-                        return result
+                        return float(balance_value)
                     except (ValueError, TypeError) as e:
                         print(f"[ERROR] 잔고 값 변환 실패 {exchange_name}: {balance_value} (오류: {e})")
                         return None
                 else:
                     # dict가 아닌 경우 숫자로 변환 시도
                     try:
-                        result = float(balance_dict)
-                        return result
+                        return float(balance_dict)
                     except (ValueError, TypeError):
                         print(f"[ERROR] {exchange_name}: 잔고가 예상 형식이 아닙니다: {type(balance_dict)}")
                         return None
             else:
-                print(f"[ERROR] 거래소 {exchange_name}에 fetch_balance() 메서드가 없습니다.")
                 return None
         except Exception as e:
             print(f"[ERROR] 잔고 조회 실패 {exchange_name}: {e}")
@@ -420,35 +418,63 @@ class ExchangeAdapter:
             # dict인 경우 그대로 사용, 객체인 경우 dict로 변환 시도
             if isinstance(market, dict):
                 market_dict = market
-                print(f"[DEBUG] 마켓 데이터 타입: dict, 키: {list(market_dict.keys())[:10]}")
             elif hasattr(market, "__dict__"):
                 market_dict = market.__dict__
-                print(f"[DEBUG] 마켓 데이터 타입: 객체 (__dict__), 키: {list(market_dict.keys())[:10]}")
             elif hasattr(market, "to_dict"):
                 market_dict = market.to_dict()
-                print(f"[DEBUG] 마켓 데이터 타입: 객체 (to_dict), 키: {list(market_dict.keys())[:10]}")
             else:
                 # DR_MANHATTAN.md: market.question, market.prices 속성 사용
-                # Market 객체의 속성 직접 접근
-                print(f"[DEBUG] 마켓 데이터 타입: 객체 (속성 접근), 사용 가능한 속성: {[a for a in dir(market) if not a.startswith('_')][:10]}")
+                # market_id 추출 (여러 가능한 속성 이름 시도)
+                market_id = (
+                    getattr(market, "market_id", None)
+                    or getattr(market, "id", None)
+                    or getattr(market, "slug", None)
+                    or getattr(market, "marketId", None)
+                )
+                
+                # question 추출
+                question = (
+                    getattr(market, "question", None)
+                    or getattr(market, "title", None)
+                    or getattr(market, "name", None)
+                    or ""
+                )
                 
                 # prices는 dict일 수 있음 (예: {'Yes': 0.65, 'No': 0.35})
-                prices = getattr(market, "prices", {})
+                prices = getattr(market, "prices", None)
+                yes_price = None
+                no_price = None
+                
                 if isinstance(prices, dict):
-                    yes_price = prices.get("Yes") or prices.get("yes")
-                    no_price = prices.get("No") or prices.get("no")
-                else:
-                    yes_price = None
-                    no_price = None
+                    yes_price = prices.get("Yes") or prices.get("yes") or prices.get("YES")
+                    no_price = prices.get("No") or prices.get("no") or prices.get("NO")
+                
+                # prices에서 찾지 못했으면 직접 속성에서 찾기
+                if yes_price is None:
+                    yes_price = (
+                        getattr(market, "yes_price", None)
+                        or getattr(market, "yesPrice", None)
+                        or getattr(market, "yes", None)
+                    )
+                if no_price is None:
+                    no_price = (
+                        getattr(market, "no_price", None)
+                        or getattr(market, "noPrice", None)
+                        or getattr(market, "no", None)
+                    )
                 
                 market_dict = {
-                    "market_id": getattr(market, "market_id", getattr(market, "id", "")),
-                    "question": getattr(market, "question", getattr(market, "title", "")),
-                    "yes_price": yes_price or getattr(market, "yes_price", getattr(market, "yesPrice", None)),
-                    "no_price": no_price or getattr(market, "no_price", getattr(market, "noPrice", None)),
-                    "volume": getattr(market, "volume", getattr(market, "totalVolume", 0.0)),
-                    "close_time": getattr(market, "close_time", getattr(market, "closeTime", None)),
-                    "status": getattr(market, "status", "open"),
+                    "market_id": str(market_id) if market_id is not None else "",
+                    "question": str(question) if question else "",
+                    "yes_price": yes_price,
+                    "no_price": no_price,
+                    "volume": getattr(market, "volume", None) or getattr(market, "totalVolume", None) or 0.0,
+                    "close_time": (
+                        getattr(market, "close_time", None)
+                        or getattr(market, "closeTime", None)
+                        or getattr(market, "end_time", None)
+                    ),
+                    "status": getattr(market, "status", None) or getattr(market, "state", None) or "open",
                 }
 
             # 정규화된 형식으로 변환
@@ -477,10 +503,12 @@ class ExchangeAdapter:
 
             # 필수 필드 검증
             if not normalized["market_id"]:
-                print(f"[WARNING] 마켓 ID가 없습니다. 원본 데이터: {market_dict}")
-                return None
+                # market_id가 없어도 question이 있으면 계속 진행 (임시 ID 생성)
+                if normalized["question"]:
+                    normalized["market_id"] = normalized["question"][:100].replace(" ", "-").lower()
+                else:
+                    return None
 
-            print(f"[DEBUG] 마켓 정규화 성공: {normalized['market_id'][:50]}...")
             return normalized
         except Exception as e:
             print(f"[ERROR] 마켓 데이터 정규화 실패: {e}")

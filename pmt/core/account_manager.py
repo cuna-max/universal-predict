@@ -32,10 +32,8 @@ class AccountManager(QObject):
         def _load():
             all_balances = []
             available_exchanges = self.exchange_adapter.list_available_exchanges()
-            print(f"[DEBUG] AccountManager: 잔고 로딩 시작, 거래소: {available_exchanges}")
             
             if not available_exchanges:
-                print("[WARNING] AccountManager: 사용 가능한 거래소가 없습니다.")
                 self.balances_loaded.emit([])
                 self.loading_finished.emit()
                 return
@@ -43,7 +41,6 @@ class AccountManager(QObject):
             futures = {}
 
             for exchange_name in available_exchanges:
-                print(f"[DEBUG] AccountManager: {exchange_name} 잔고 조회 시작")
                 future = self.executor.submit(self.exchange_adapter.fetch_balance, exchange_name)
                 futures[future] = exchange_name
 
@@ -53,15 +50,9 @@ class AccountManager(QObject):
                     balance = future.result()
                     if balance is not None:
                         all_balances.append({"exchange": exchange_name, "balance": balance})
-                        print(f"[DEBUG] AccountManager: {exchange_name} 잔고 = {balance}")
-                    else:
-                        print(f"[WARNING] AccountManager: {exchange_name} 잔고가 None입니다.")
                 except Exception as e:
                     print(f"[ERROR] 잔고 로딩 실패 {exchange_name}: {e}")
-                    import traceback
-                    traceback.print_exc()
 
-            print(f"[DEBUG] AccountManager: 총 {len(all_balances)}개 거래소 잔고 로드 완료")
             self.balances_loaded.emit(all_balances)
             self.loading_finished.emit()
 
