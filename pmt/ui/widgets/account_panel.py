@@ -5,6 +5,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
@@ -26,6 +28,9 @@ class AccountPanel(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """초기화."""
         super().__init__(parent)
+        self._all_balances: list[dict] = []
+        self._all_positions: list[dict] = []
+        self._all_orders: list[dict] = []
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -48,6 +53,21 @@ class AccountPanel(QWidget):
         balance_layout = QVBoxLayout(self.balance_tab)
         balance_layout.setContentsMargins(5, 5, 5, 5)
 
+        # 거래소 필터
+        balance_filter_layout = QHBoxLayout()
+        balance_filter_label = QLabel("거래소:")
+        balance_filter_label.setMinimumWidth(60)
+        self.balance_exchange_filter = QComboBox()
+        self.balance_exchange_filter.addItem("전체", None)
+        self.balance_exchange_filter.addItem("Polymarket", "polymarket")
+        self.balance_exchange_filter.addItem("Opinion", "opinion")
+        self.balance_exchange_filter.addItem("Limitless", "limitless")
+        self.balance_exchange_filter.currentIndexChanged.connect(self._apply_balance_filter)
+        balance_filter_layout.addWidget(balance_filter_label)
+        balance_filter_layout.addWidget(self.balance_exchange_filter)
+        balance_filter_layout.addStretch()
+        balance_layout.addLayout(balance_filter_layout)
+
         self.balance_table = QTableWidget()
         self.balance_table.setColumnCount(2)
         self.balance_table.setHorizontalHeaderLabels(["거래소", "잔고"])
@@ -66,6 +86,21 @@ class AccountPanel(QWidget):
         self.position_tab = QWidget()
         position_layout = QVBoxLayout(self.position_tab)
         position_layout.setContentsMargins(5, 5, 5, 5)
+
+        # 거래소 필터
+        position_filter_layout = QHBoxLayout()
+        position_filter_label = QLabel("거래소:")
+        position_filter_label.setMinimumWidth(60)
+        self.position_exchange_filter = QComboBox()
+        self.position_exchange_filter.addItem("전체", None)
+        self.position_exchange_filter.addItem("Polymarket", "polymarket")
+        self.position_exchange_filter.addItem("Opinion", "opinion")
+        self.position_exchange_filter.addItem("Limitless", "limitless")
+        self.position_exchange_filter.currentIndexChanged.connect(self._apply_position_filter)
+        position_filter_layout.addWidget(position_filter_label)
+        position_filter_layout.addWidget(self.position_exchange_filter)
+        position_filter_layout.addStretch()
+        position_layout.addLayout(position_filter_layout)
 
         self.position_table = QTableWidget()
         self.position_table.setColumnCount(5)
@@ -87,6 +122,21 @@ class AccountPanel(QWidget):
         self.orders_tab = QWidget()
         orders_layout = QVBoxLayout(self.orders_tab)
         orders_layout.setContentsMargins(5, 5, 5, 5)
+
+        # 거래소 필터
+        orders_filter_layout = QHBoxLayout()
+        orders_filter_label = QLabel("거래소:")
+        orders_filter_label.setMinimumWidth(60)
+        self.orders_exchange_filter = QComboBox()
+        self.orders_exchange_filter.addItem("전체", None)
+        self.orders_exchange_filter.addItem("Polymarket", "polymarket")
+        self.orders_exchange_filter.addItem("Opinion", "opinion")
+        self.orders_exchange_filter.addItem("Limitless", "limitless")
+        self.orders_exchange_filter.currentIndexChanged.connect(self._apply_orders_filter)
+        orders_filter_layout.addWidget(orders_filter_label)
+        orders_filter_layout.addWidget(self.orders_exchange_filter)
+        orders_filter_layout.addStretch()
+        orders_layout.addLayout(orders_filter_layout)
 
         self.orders_table = QTableWidget()
         self.orders_table.setColumnCount(7)
@@ -156,8 +206,22 @@ class AccountPanel(QWidget):
 
     def set_balances(self, balances: list[dict]) -> None:
         """잔고 데이터 설정."""
-        self.balance_table.setRowCount(len(balances))
-        for row, balance in enumerate(balances):
+        self._all_balances = balances
+        self._apply_balance_filter()
+
+    def _apply_balance_filter(self) -> None:
+        """잔고 필터 적용."""
+        selected_exchange = self.balance_exchange_filter.currentData()
+        
+        filtered_balances = []
+        for balance in self._all_balances:
+            if selected_exchange is not None:
+                if balance.get("exchange", "").lower() != selected_exchange.lower():
+                    continue
+            filtered_balances.append(balance)
+
+        self.balance_table.setRowCount(len(filtered_balances))
+        for row, balance in enumerate(filtered_balances):
             exchange_item = QTableWidgetItem(balance.get("exchange", ""))
             self.balance_table.setItem(row, 0, exchange_item)
 
@@ -171,8 +235,22 @@ class AccountPanel(QWidget):
 
     def set_positions(self, positions: list[dict]) -> None:
         """포지션 데이터 설정."""
-        self.position_table.setRowCount(len(positions))
-        for row, position in enumerate(positions):
+        self._all_positions = positions
+        self._apply_position_filter()
+
+    def _apply_position_filter(self) -> None:
+        """포지션 필터 적용."""
+        selected_exchange = self.position_exchange_filter.currentData()
+        
+        filtered_positions = []
+        for position in self._all_positions:
+            if selected_exchange is not None:
+                if position.get("exchange", "").lower() != selected_exchange.lower():
+                    continue
+            filtered_positions.append(position)
+
+        self.position_table.setRowCount(len(filtered_positions))
+        for row, position in enumerate(filtered_positions):
             self.position_table.setItem(row, 0, QTableWidgetItem(position.get("exchange", "")))
             self.position_table.setItem(row, 1, QTableWidgetItem(position.get("market_id", "")))
             self.position_table.setItem(row, 2, QTableWidgetItem(position.get("outcome", "")))
@@ -190,8 +268,22 @@ class AccountPanel(QWidget):
 
     def set_orders(self, orders: list[dict]) -> None:
         """활성 주문 데이터 설정."""
-        self.orders_table.setRowCount(len(orders))
-        for row, order in enumerate(orders):
+        self._all_orders = orders
+        self._apply_orders_filter()
+
+    def _apply_orders_filter(self) -> None:
+        """주문 필터 적용."""
+        selected_exchange = self.orders_exchange_filter.currentData()
+        
+        filtered_orders = []
+        for order in self._all_orders:
+            if selected_exchange is not None:
+                if order.get("exchange", "").lower() != selected_exchange.lower():
+                    continue
+            filtered_orders.append(order)
+
+        self.orders_table.setRowCount(len(filtered_orders))
+        for row, order in enumerate(filtered_orders):
             self.orders_table.setItem(row, 0, QTableWidgetItem(order.get("exchange", "")))
             self.orders_table.setItem(row, 1, QTableWidgetItem(order.get("market_id", "")))
             self.orders_table.setItem(row, 2, QTableWidgetItem(order.get("outcome", "")))

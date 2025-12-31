@@ -6,6 +6,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -25,6 +27,7 @@ class MarketBoard(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """초기화."""
         super().__init__(parent)
+        self._all_markets: list[dict] = []  # 모든 마켓 데이터 저장
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -37,12 +40,31 @@ class MarketBoard(QWidget):
         filter_layout = QVBoxLayout()
         filter_layout.setSpacing(5)
 
-        # 키워드 필터
+        # 거래소 필터 (첫 번째 행)
+        exchange_row = QHBoxLayout()
+        exchange_label = QLabel("거래소:")
+        exchange_label.setMinimumWidth(60)
+        self.exchange_filter = QComboBox()
+        self.exchange_filter.addItem("전체", None)  # None은 모든 거래소 표시
+        self.exchange_filter.addItem("Polymarket", "polymarket")
+        self.exchange_filter.addItem("Opinion", "opinion")
+        self.exchange_filter.addItem("Limitless", "limitless")
+        self.exchange_filter.currentIndexChanged.connect(self._apply_filters)
+        exchange_row.addWidget(exchange_label)
+        exchange_row.addWidget(self.exchange_filter)
+        exchange_row.addStretch()
+        filter_layout.addLayout(exchange_row)
+
+        # 키워드 필터 (두 번째 행)
+        keyword_row = QHBoxLayout()
         keyword_label = QLabel("키워드:")
+        keyword_label.setMinimumWidth(60)
         self.keyword_filter = QLineEdit()
         self.keyword_filter.setPlaceholderText("마켓 질문 검색...")
-        filter_layout.addWidget(keyword_label)
-        filter_layout.addWidget(self.keyword_filter)
+        self.keyword_filter.textChanged.connect(self._apply_filters)
+        keyword_row.addWidget(keyword_label)
+        keyword_row.addWidget(self.keyword_filter)
+        filter_layout.addLayout(keyword_row)
 
         # 새로고침 버튼
         self.refresh_button = QPushButton("새로고침")
@@ -84,6 +106,40 @@ class MarketBoard(QWidget):
 
     def set_markets(self, markets: list[dict]) -> None:
         """마켓 데이터 설정."""
+        # 모든 마켓 데이터 저장
+        self._all_markets = markets
+        # 필터 적용하여 표시
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
+        """필터 적용하여 마켓 표시."""
+        # 거래소 필터
+        selected_exchange = self.exchange_filter.currentData()
+        
+        # 키워드 필터
+        keyword = self.keyword_filter.text().strip().lower()
+
+        # 필터링된 마켓
+        filtered_markets = []
+        for market in self._all_markets:
+            # 거래소 필터
+            if selected_exchange is not None:
+                if market.get("exchange", "").lower() != selected_exchange.lower():
+                    continue
+
+            # 키워드 필터
+            if keyword:
+                question = market.get("question", "").lower()
+                if keyword not in question:
+                    continue
+
+            filtered_markets.append(market)
+
+        # 테이블 업데이트
+        self._update_table(filtered_markets)
+
+    def _update_table(self, markets: list[dict]) -> None:
+        """테이블에 마켓 데이터 표시."""
         self.table.setRowCount(len(markets))
 
         for row, market in enumerate(markets):

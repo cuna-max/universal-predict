@@ -50,9 +50,18 @@ class MarketManager(QObject):
 
             # 실제 API 호출
             available_exchanges = self.exchange_adapter.list_available_exchanges()
+            print(f"[DEBUG] MarketManager: 사용 가능한 거래소 {len(available_exchanges)}개: {available_exchanges}")
+            
+            if not available_exchanges:
+                print("[WARNING] MarketManager: 사용 가능한 거래소가 없습니다.")
+                self.markets_loaded.emit([])
+                self.loading_finished.emit()
+                return
+
             futures = {}
 
             for exchange_name in available_exchanges:
+                print(f"[DEBUG] MarketManager: {exchange_name} 마켓 로딩 시작")
                 future = self.executor.submit(self.exchange_adapter.fetch_markets, exchange_name)
                 futures[future] = exchange_name
 
@@ -60,13 +69,19 @@ class MarketManager(QObject):
                 exchange_name = futures[future]
                 try:
                     markets = future.result()
+                    print(f"[DEBUG] MarketManager: {exchange_name}에서 {len(markets)}개 마켓 로드됨")
                     all_markets.extend(markets)
                 except Exception as e:
-                    print(f"마켓 로딩 실패 {exchange_name}: {e}")
+                    print(f"[ERROR] 마켓 로딩 실패 {exchange_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            print(f"[DEBUG] MarketManager: 총 {len(all_markets)}개 마켓 로드 완료")
 
             # 캐시 저장
             if all_markets:
                 self._save_to_cache(all_markets)
+                print(f"[DEBUG] MarketManager: {len(all_markets)}개 마켓 캐시 저장 완료")
 
             self.markets_loaded.emit(all_markets)
             self.loading_finished.emit()

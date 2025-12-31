@@ -5,6 +5,9 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QSplitter, QVBoxLayout, 
 
 from pmt.config.preset_loader import PresetLoader
 from pmt.config.settings import Settings
+from pmt.core import AccountManager, MarketManager
+from pmt.storage.database import Database
+from pmt.trading.exchange_adapter import ExchangeAdapter
 from pmt.ui.widgets import AccountPanel, MarketBoard, MarketDetailPanel, PresetPanel
 
 
@@ -15,8 +18,33 @@ class MainWindow(QMainWindow):
         """초기화."""
         super().__init__()
         self.settings = settings
+        self._init_managers()
         self._init_ui()
+        self._connect_signals()
         self._load_presets()
+        self._load_initial_data()
+
+    def _init_managers(self) -> None:
+        """매니저 초기화."""
+        # Database 초기화
+        db_path = self.settings.data_dir / "pmt.db"
+        self.database = Database(db_path)
+
+        # ExchangeAdapter 초기화
+        self.exchange_adapter = ExchangeAdapter(self.settings)
+
+        # MarketManager 초기화
+        self.market_manager = MarketManager(
+            settings=self.settings,
+            exchange_adapter=self.exchange_adapter,
+            database=self.database,
+        )
+
+        # AccountManager 초기화
+        self.account_manager = AccountManager(
+            settings=self.settings,
+            exchange_adapter=self.exchange_adapter,
+        )
 
     def _init_ui(self) -> None:
         """UI 초기화."""
@@ -69,12 +97,26 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(splitter)
 
-        # 시그널 연결
+    def _connect_signals(self) -> None:
+        """시그널 연결."""
+        # Market Board 시그널
         self.market_board.market_selected.connect(self._on_market_selected)
+        self.market_board.refresh_button.clicked.connect(self._on_refresh_markets)
+
+        # MarketManager 시그널
+        self.market_manager.markets_loaded.connect(self.market_board.set_markets)
+
+        # Preset Panel 시그널
         self.preset_panel.preset_clicked.connect(self._on_preset_clicked)
 
-        # 초기 데이터 로드 (더미 데이터로 화면 구성)
-        self._load_dummy_data()
+        # AccountManager 시그널
+        self.account_manager.balances_loaded.connect(self.account_panel.set_balances)
+        self.account_manager.positions_loaded.connect(self.account_panel.set_positions)
+        self.account_manager.orders_loaded.connect(self.account_panel.set_orders)
+
+        # AccountPanel 시그널
+        self.account_panel.refresh_requested.connect(self._on_refresh_account_data)
+        self.account_panel.cancel_order_requested.connect(self._on_cancel_order)
 
     def _load_presets(self) -> None:
         """프리셋 로드."""
@@ -82,89 +124,54 @@ class MainWindow(QMainWindow):
         presets = loader.load_all()
         self.preset_panel.set_presets(presets)
 
+    def _load_initial_data(self) -> None:
+        """초기 데이터 로드."""
+        # 마켓 데이터 로드
+        self.market_manager.load_all_markets()
+
+        # 계정 데이터 로드
+        self.account_manager.load_all_balances()
+        self.account_manager.load_all_positions()
+        self.account_manager.load_all_orders()
+
     def _on_market_selected(self, exchange: str, market_id: str) -> None:
         """마켓 선택 시 호출."""
-        # TODO: 실제 마켓 데이터 가져와서 표시
-        # 임시로 더미 데이터 사용
-        market_data = {
-            "question": f"선택된 마켓: {market_id}",
-            "yes_price": 0.65,
-            "no_price": 0.35,
-            "close_time": None,
-        }
-        self.market_detail.set_market(market_data)
+        # 백그라운드에서 마켓 상세 정보 가져오기
+        market_data = self.market_manager.get_market(exchange, market_id)
+        if market_data:
+            self.market_detail.set_market(market_data)
+        else:
+            # 마켓을 찾을 수 없는 경우 기본 메시지 표시
+            self.market_detail.clear()
+
+    def _on_refresh_markets(self) -> None:
+        """마켓 새로고침."""
+        self.market_manager.load_all_markets(use_cache=False)
+
+    def _on_refresh_account_data(self) -> None:
+        """계정 데이터 새로고침."""
+        # 모든 계정 데이터 새로고침
+        self.account_manager.load_all_balances()
+        self.account_manager.load_all_positions()
+        self.account_manager.load_all_orders()
+
+    def _on_cancel_order(self, exchange_name: str, order_id: str) -> None:
+        """주문 취소."""
+        success, error_msg = self.exchange_adapter.cancel_order(exchange_name, order_id)
+        if success:
+            # 주문 취소 성공 시 주문 목록 새로고침
+            self.account_manager.load_all_orders()
+        else:
+            # 에러 메시지 표시 (필요시 QMessageBox 사용)
+            print(f"주문 취소 실패: {error_msg}")
 
     def _on_preset_clicked(self, preset_name: str) -> None:
         """프리셋 클릭 시 호출."""
         # TODO: Risk Guard 검증 및 주문 실행
         print(f"프리셋 클릭: {preset_name}")
 
-    def _load_dummy_data(self) -> None:
-        """더미 데이터 로드 (화면 구성 확인용)."""
-        # 더미 마켓 데이터
-        dummy_markets = [
-            {
-                "exchange": "polymarket",
-                "market_id": "fed-2026-rate",
-                "question": "Will the Fed cut rates in 2026?",
-                "yes_price": 0.64,
-                "no_price": 0.36,
-                "volume": 125000,
-                "close_time": None,
-                "status": "open",
-            },
-            {
-                "exchange": "opinion",
-                "market_id": "election-2024",
-                "question": "Who will win the 2024 election?",
-                "yes_price": 0.52,
-                "no_price": 0.48,
-                "volume": 89000,
-                "close_time": None,
-                "status": "open",
-            },
-            {
-                "exchange": "limitless",
-                "market_id": "btc-price-2025",
-                "question": "Will BTC reach $100k in 2025?",
-                "yes_price": 0.45,
-                "no_price": 0.55,
-                "volume": 156000,
-                "close_time": None,
-                "status": "open",
-            },
-        ]
-        self.market_board.set_markets(dummy_markets)
-
-        # 더미 잔고 데이터
-        dummy_balances = [
-            {"exchange": "polymarket", "balance": 1000.0},
-            {"exchange": "opinion", "balance": 500.0},
-            {"exchange": "limitless", "balance": 750.0},
-        ]
-        self.account_panel.set_balances(dummy_balances)
-
-        # 더미 포지션 데이터
-        dummy_positions = [
-            {
-                "exchange": "polymarket",
-                "market_id": "fed-2026-rate",
-                "outcome": "Yes",
-                "size": 50,
-                "avg_price": 0.62,
-            }
-        ]
-        self.account_panel.set_positions(dummy_positions)
-
-        # 더미 주문 데이터
-        dummy_orders = [
-            {
-                "exchange": "polymarket",
-                "market_id": "fed-2026-rate",
-                "outcome": "No",
-                "side": "BUY",
-                "price": 0.35,
-                "size": 30,
-            }
-        ]
-        self.account_panel.set_orders(dummy_orders)
+    def closeEvent(self, event) -> None:
+        """윈도우 종료 시 리소스 정리."""
+        self.market_manager.shutdown()
+        self.account_manager.shutdown()
+        event.accept()
